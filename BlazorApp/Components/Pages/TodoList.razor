@@ -1,0 +1,220 @@
+@page "/todos"
+@using BlazorApp.Services
+@using BlazorApp.Models
+@rendermode InteractiveServer
+@inject CosmosDbService CosmosDbService
+
+<PageTitle>Todo List</PageTitle>
+
+<h1>Todo List - Cosmos DB Demo</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <h3>Add New Todo</h3>
+        <EditForm Model="@newTodo" OnValidSubmit="@AddTodo">
+            <div class="form-group mb-3">
+                <label for="title">Title:</label>
+                <InputText @bind-Value="newTodo.Title" class="form-control" id="title" />
+            </div>
+            
+            <div class="form-group mb-3">
+                <label for="description">Description:</label>
+                <InputTextArea @bind-Value="newTodo.Description" class="form-control" id="description" rows="3" />
+            </div>
+            
+            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
+                Add Todo
+            </button>
+        </EditForm>
+    </div>
+</div>
+
+<hr />
+
+<div class="row">
+    <div class="col-12">
+        <h3>Your Todos</h3>
+        
+        <button class="btn btn-secondary mb-3" @onclick="LoadTodos" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-2"></span>
+            }
+            Refresh
+        </button>
+
+        @if (errorMessage != null)
+        {
+            <div class="alert alert-danger">
+                @errorMessage
+            </div>
+        }
+
+        @if (todos.Any())
+        {
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var todo in todos)
+                        {
+                            <tr class="@(todo.IsCompleted ? "table-success" : "")">
+                                <td>@todo.Title</td>
+                                <td>@todo.Description</td>
+                                <td>
+                                    <span class="badge @(todo.IsCompleted ? "bg-success" : "bg-warning")">
+                                        @(todo.IsCompleted ? "Completed" : "Pending")
+                                    </span>
+                                </td>
+                                <td>@todo.CreatedDate.ToString("MM/dd/yyyy hh:mm tt")</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary me-1" 
+                                            @onclick="() => ToggleComplete(todo)"
+                                            disabled="@isLoading">
+                                        @(todo.IsCompleted ? "Mark Incomplete" : "Mark Complete")
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            @onclick="() => DeleteTodo(todo)"
+                                            disabled="@isLoading">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else if (!isLoading)
+        {
+            <div class="alert alert-info">
+                <h5>No todos found!</h5>
+                <p>Add your first todo item using the form above.</p>
+                <p><small><strong>Note:</strong> Make sure your Cosmos DB connection string is configured in appsettings.json</small></p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<TodoItem> todos = new();
+    private TodoItem newTodo = new();
+    private bool isLoading = false;
+    private string? errorMessage = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTodos();
+    }
+
+    private async Task LoadTodos()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            StateHasChanged();
+            
+            todos = await CosmosDbService.GetItemsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading todos: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddTodo()
+    {
+        if (string.IsNullOrWhiteSpace(newTodo.Title))
+            return;
+
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            StateHasChanged();
+
+            await CosmosDbService.CreateItemAsync(newTodo);
+            
+            // Reset form
+            newTodo = new TodoItem();
+            
+            // Reload the todos
+            await LoadTodos();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error adding todo: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleComplete(TodoItem todo)
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            
+            todo.IsCompleted = !todo.IsCompleted;
+            await CosmosDbService.UpdateItemAsync(todo);
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error updating todo: {ex.Message}";
+            // Revert the change
+            todo.IsCompleted = !todo.IsCompleted;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteTodo(TodoItem todo)
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            
+            await CosmosDbService.DeleteItemAsync(todo.Id, todo.PartitionKey);
+            todos.Remove(todo);
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting todo: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}
