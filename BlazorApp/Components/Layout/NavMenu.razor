@@ -31,6 +31,19 @@
                 <span class="bi bi-check2-square" aria-hidden="true"></span> Todo List
             </NavLink>
         </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="/.auth/logout?post_logout_redirect_uri=/">Sign out</a>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <a class="nav-link" href="/.auth/login/okta?post_login_redirect_uri=/">Sign in</a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
     </nav>
 </div>
 

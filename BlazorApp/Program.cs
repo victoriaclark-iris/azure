@@ -1,12 +1,19 @@
 using BlazorApp.Components;
 using BlazorApp.Services;
 using Microsoft.Azure.Cosmos;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddCascadingAuthenticationState();
+
+builder.Services.AddAuthorization();
 
 // Configure Cosmos DB
 var cosmosConnectionString = builder.Configuration.GetConnectionString("CosmosDb") ?? 
@@ -42,6 +49,51 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue))
+    {
+        try
+        {
+            var encodedPrincipal = headerValue.ToString();
+            encodedPrincipal = encodedPrincipal.Replace('-', '+').Replace('_', '/');
+            encodedPrincipal = encodedPrincipal.PadRight(encodedPrincipal.Length + (4 - encodedPrincipal.Length % 4) % 4, '=');
+
+            var decodedBytes = Convert.FromBase64String(encodedPrincipal);
+            var decodedJson = Encoding.UTF8.GetString(decodedBytes);
+
+            using var principalDocument = JsonDocument.Parse(decodedJson);
+            var claims = new List<Claim>();
+
+            if (principalDocument.RootElement.TryGetProperty("claims", out var claimsElement))
+            {
+                foreach (var claimElement in claimsElement.EnumerateArray())
+                {
+                    var claimType = claimElement.GetProperty("typ").GetString();
+                    var claimValue = claimElement.GetProperty("val").GetString();
+
+                    if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
+                    {
+                        claims.Add(new Claim(claimType, claimValue));
+                    }
+                }
+            }
+
+            if (claims.Count > 0)
+            {
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AppServiceEasyAuth"));
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    await next();
+});
+
+app.UseAuthorization();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
