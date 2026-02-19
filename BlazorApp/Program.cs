@@ -1,5 +1,6 @@
 using BlazorApp.Components;
 using BlazorApp.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Azure.Cosmos;
 using System.Security.Claims;
 using System.Text;
@@ -12,6 +13,12 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddCascadingAuthenticationState();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/account/login";
+    });
 
 builder.Services.AddAuthorization();
 
@@ -49,6 +56,7 @@ app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseAuthentication();
 
 app.Use(async (context, next) =>
 {
@@ -94,6 +102,26 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthorization();
+
+app.MapGet("/account/login", (HttpContext httpContext, string? returnUrl) =>
+{
+    var safePath = !string.IsNullOrWhiteSpace(returnUrl) && returnUrl.StartsWith('/')
+        ? returnUrl
+        : "/";
+
+    var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{safePath}";
+    var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
+
+    return Results.Redirect($"/.auth/login/okta?post_login_redirect_uri={encodedReturnUrl}");
+});
+
+app.MapGet("/account/logout", (HttpContext httpContext) =>
+{
+    var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/";
+    var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
+
+    return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedReturnUrl}");
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
