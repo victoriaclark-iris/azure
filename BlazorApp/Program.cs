@@ -60,7 +60,11 @@ app.UseAuthentication();
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue))
+    var hasPrincipalHeader = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue);
+    var hasPrincipalId = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-ID", out var principalId) &&
+                        !string.IsNullOrWhiteSpace(principalId.ToString());
+
+    if (hasPrincipalHeader && hasPrincipalId)
     {
         try
         {
@@ -92,10 +96,19 @@ app.Use(async (context, next) =>
             {
                 context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AppServiceEasyAuth"));
             }
+            else
+            {
+                context.User = new ClaimsPrincipal(new ClaimsIdentity());
+            }
         }
         catch
         {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity());
         }
+    }
+    else
+    {
+        context.User = new ClaimsPrincipal(new ClaimsIdentity());
     }
 
     await next();
@@ -117,7 +130,7 @@ app.MapGet("/account/login", (HttpContext httpContext, string? returnUrl) =>
 
 app.MapGet("/account/logout", (HttpContext httpContext) =>
 {
-    var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/";
+    var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out";
     var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
 
     return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedReturnUrl}");
