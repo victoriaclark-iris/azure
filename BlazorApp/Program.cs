@@ -130,10 +130,7 @@ app.MapGet("/account/login", (HttpContext httpContext, string? returnUrl) =>
 
 app.MapGet("/account/logout", (HttpContext httpContext) =>
 {
-    var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out";
-    var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
-
-    return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedReturnUrl}");
+    return Results.Redirect("/signing-out");
 });
 
 app.MapRazorComponents<App>()
