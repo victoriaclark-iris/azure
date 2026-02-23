@@ -135,50 +135,61 @@ if (!app.Environment.IsDevelopment())
         var hasPrincipalName = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-NAME", out var principalName) &&
                               !string.IsNullOrWhiteSpace(principalName.ToString());
 
+        Console.WriteLine($"Easy Auth Debug: hasPrincipalHeader={hasPrincipalHeader}, hasPrincipalName={hasPrincipalName}");
+        Console.WriteLine($"Principal Name Header: {principalName}");
+
         if (hasPrincipalHeader && hasPrincipalName)
         {
             try
             {
+                Console.WriteLine("Processing Easy Auth headers...");
                 var encodedPrincipal = headerValue.ToString();
                 encodedPrincipal = encodedPrincipal.Replace('-', '+').Replace('_', '/');
                 encodedPrincipal = encodedPrincipal.PadRight(encodedPrincipal.Length + (4 - encodedPrincipal.Length % 4) % 4, '=');
 
                 var decodedBytes = Convert.FromBase64String(encodedPrincipal);
                 var decodedJson = Encoding.UTF8.GetString(decodedBytes);
+                Console.WriteLine($"Decoded JSON: {decodedJson}");
 
                 using var principalDocument = JsonDocument.Parse(decodedJson);
                 var claims = new List<Claim>();
+
+                // Add a basic name claim from the header
+                claims.Add(new Claim("name", principalName.ToString()));
+                claims.Add(new Claim("sub", principalName.ToString()));
 
                 if (principalDocument.RootElement.TryGetProperty("claims", out var claimsElement))
                 {
                     foreach (var claimElement in claimsElement.EnumerateArray())
                     {
-                        var claimType = claimElement.GetProperty("typ").GetString();
-                        var claimValue = claimElement.GetProperty("val").GetString();
-
-                        if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
+                        if (claimElement.TryGetProperty("typ", out var typeProperty) && 
+                            claimElement.TryGetProperty("val", out var valueProperty))
                         {
-                            claims.Add(new Claim(claimType, claimValue));
+                            var claimType = typeProperty.GetString();
+                            var claimValue = valueProperty.GetString();
+
+                            if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
+                            {
+                                claims.Add(new Claim(claimType, claimValue));
+                            }
                         }
                     }
                 }
 
-                if (claims.Count > 0)
-                {
-                    context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AppServiceEasyAuth"));
-                }
-                else
-                {
-                    context.User = new ClaimsPrincipal(new ClaimsIdentity());
-                }
+                Console.WriteLine($"Created {claims.Count} claims");
+                var identity = new ClaimsIdentity(claims, "EasyAuth");
+                context.User = new ClaimsPrincipal(identity);
+                Console.WriteLine($"Set user identity: {context.User.Identity.IsAuthenticated}");
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"Error processing Easy Auth: {ex.Message}");
                 context.User = new ClaimsPrincipal(new ClaimsIdentity());
             }
         }
         else
         {
+            Console.WriteLine("No Easy Auth headers found, setting anonymous user");
             context.User = new ClaimsPrincipal(new ClaimsIdentity());
         }
 
