@@ -132,10 +132,10 @@ if (!app.Environment.IsDevelopment())
     app.Use(async (context, next) =>
     {
         var hasPrincipalHeader = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue);
-        var hasPrincipalId = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-ID", out var principalId) &&
-                            !string.IsNullOrWhiteSpace(principalId.ToString());
+        var hasPrincipalName = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-NAME", out var principalName) &&
+                              !string.IsNullOrWhiteSpace(principalName.ToString());
 
-        if (hasPrincipalHeader && hasPrincipalId)
+        if (hasPrincipalHeader && hasPrincipalName)
         {
             try
             {
