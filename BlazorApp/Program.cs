@@ -203,9 +203,11 @@ app.MapGet("/account/logout", async (HttpContext httpContext) =>
         return Results.Redirect("/signed-out");
     }
 
-    // For production with Easy Auth, redirect to signing-out page
-    // which will handle the /.auth/logout flow
-    return Results.Redirect("/signing-out");
+    // For production with Easy Auth, redirect DIRECTLY to Easy Auth logout
+    // This avoids the redirect loop through /signing-out page
+    var redirectUri = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out";
+    var encodedRedirectUri = Uri.EscapeDataString(redirectUri);
+    return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedRedirectUri}");
 });
 
 // Add a backup logout endpoint for troubleshooting
