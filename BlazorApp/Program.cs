@@ -22,19 +22,20 @@ var useLocalOidc = builder.Environment.IsDevelopment() &&
                    !string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Okta:ClientId"]) &&
                    !string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Okta:ClientSecret"]);
 
-builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    })
-    .AddCookie(options =>
-    {
-        options.LoginPath = "/account/login";
-        options.LogoutPath = "/account/logout";
-    });
-
 if (useLocalOidc)
 {
+    // Development mode - use Cookie + OIDC
+    builder.Services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        })
+        .AddCookie(options =>
+        {
+            options.LoginPath = "/account/login";
+            options.LogoutPath = "/account/logout";
+        });
+
     builder.Services.AddAuthentication()
         .AddOpenIdConnect("oidc", options =>
         {
@@ -73,6 +74,19 @@ if (useLocalOidc)
                     return Task.CompletedTask;
                 }
             };
+        });
+}
+else
+{
+    // Production mode - minimal auth setup for Easy Auth
+    builder.Services.AddAuthentication()
+        .AddCookie(options =>
+        {
+            // In production, redirect unauthenticated users to Easy Auth
+            options.LoginPath = "/.auth/login/okta";
+            options.LogoutPath = "/.auth/logout";
+            options.Cookie.Name = "AppAuth";
+            options.ExpireTimeSpan = TimeSpan.FromHours(24);
         });
 }
 
@@ -188,9 +202,9 @@ app.MapGet("/account/login", async (HttpContext httpContext, string? returnUrl) 
             new[] { "oidc" });
     }
 
+    // For production with Easy Auth, redirect directly to Easy Auth login
     var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{safePath}";
     var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
-
     return Results.Redirect($"/.auth/login/okta?post_login_redirect_uri={encodedReturnUrl}");
 });
 
@@ -225,6 +239,25 @@ app.MapGet("/account/logout-direct", async (HttpContext httpContext) =>
     }
     
     return Results.Redirect("/signed-out");
+});
+
+// Debug endpoint to check authentication status
+app.MapGet("/debug/auth", (HttpContext httpContext) =>
+{
+    var authInfo = new
+    {
+        IsAuthenticated = httpContext.User.Identity?.IsAuthenticated,
+        Name = httpContext.User.Identity?.Name,
+        AuthenticationType = httpContext.User.Identity?.AuthenticationType,
+        Claims = httpContext.User.Claims.Select(c => new { c.Type, c.Value }).ToArray(),
+        Headers = httpContext.Request.Headers
+            .Where(h => h.Key.StartsWith("X-MS-CLIENT"))
+            .ToDictionary(h => h.Key, h => h.Value.ToString()),
+        Environment = app.Environment.EnvironmentName,
+        UseLocalOidc = useLocalOidc
+    };
+    
+    return Results.Json(authInfo);
 });
 
 app.MapRazorComponents<App>()
