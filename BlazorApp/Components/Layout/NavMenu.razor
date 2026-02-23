@@ -35,7 +35,7 @@
         <AuthorizeView>
             <Authorized Context="authState">
                 <div class="nav-item px-3">
-                    <span class="nav-link text-white-50">Signed in as: @(authState.User.Identity?.Name ?? "User")</span>
+                    <span class="nav-link text-white-50">Signed in as: @GetDisplayName(authState.User)</span>
                 </div>
                 <div class="nav-item px-3">
                     <a class="nav-link" href="/account/logout">Sign out</a>
@@ -49,4 +49,17 @@
         </AuthorizeView>
     </nav>
 </div>
+
+@code {
+    private static string GetDisplayName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var preferredName = user.Identity?.Name
+            ?? user.FindFirst("name")?.Value
+            ?? user.FindFirst("preferred_username")?.Value
+            ?? user.FindFirst("email")?.Value
+            ?? user.FindFirst("upn")?.Value;
+
+        return string.IsNullOrWhiteSpace(preferredName) ? "User" : preferredName;
+    }
+}
 

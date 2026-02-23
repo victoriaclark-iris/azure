@@ -1,7 +1,10 @@
 using BlazorApp.Components;
 using BlazorApp.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Azure.Cosmos;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -14,11 +17,64 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddCascadingAuthenticationState();
 
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+var useLocalOidc = builder.Environment.IsDevelopment() &&
+                   !string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Okta:Authority"]) &&
+                   !string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Okta:ClientId"]) &&
+                   !string.IsNullOrWhiteSpace(builder.Configuration["Authentication:Okta:ClientSecret"]);
+
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    })
     .AddCookie(options =>
     {
         options.LoginPath = "/account/login";
+        options.LogoutPath = "/account/logout";
     });
+
+if (useLocalOidc)
+{
+    builder.Services.AddAuthentication()
+        .AddOpenIdConnect("oidc", options =>
+        {
+            options.Authority = builder.Configuration["Authentication:Okta:Authority"];
+            options.ClientId = builder.Configuration["Authentication:Okta:ClientId"];
+            options.ClientSecret = builder.Configuration["Authentication:Okta:ClientSecret"];
+            options.ResponseType = OpenIdConnectResponseType.Code;
+            options.SaveTokens = true;
+            options.CallbackPath = builder.Configuration["Authentication:Okta:CallbackPath"] ?? "/signin-oidc";
+            options.SignedOutCallbackPath = "/signout-callback-oidc";
+            options.GetClaimsFromUserInfoEndpoint = true;
+
+            // Simplified sign-out configuration
+            options.SignedOutRedirectUri = "/signed-out";
+            
+            options.Scope.Clear();
+            options.Scope.Add("openid");
+            options.Scope.Add("profile");
+            options.Scope.Add("email");
+
+            // Simplified event handling with logging
+            options.Events = new OpenIdConnectEvents
+            {
+                OnRemoteFailure = context =>
+                {
+                    Console.WriteLine($"OIDC Remote Failure: {context.Failure?.Message}");
+                    context.Response.Redirect("/signed-out");
+                    context.HandleResponse();
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = context =>
+                {
+                    Console.WriteLine($"OIDC Auth Failed: {context.Exception?.Message}");
+                    context.Response.Redirect("/signed-out");
+                    context.HandleResponse();
+                    return Task.CompletedTask;
+                }
+            };
+        });
+}
 
 builder.Services.AddAuthorization();
 
@@ -58,69 +114,79 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 app.UseAuthentication();
 
-app.Use(async (context, next) =>
+if (!app.Environment.IsDevelopment())
 {
-    var hasPrincipalHeader = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue);
-    var hasPrincipalId = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-ID", out var principalId) &&
-                        !string.IsNullOrWhiteSpace(principalId.ToString());
-
-    if (hasPrincipalHeader && hasPrincipalId)
+    app.Use(async (context, next) =>
     {
-        try
+        var hasPrincipalHeader = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue);
+        var hasPrincipalId = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-ID", out var principalId) &&
+                            !string.IsNullOrWhiteSpace(principalId.ToString());
+
+        if (hasPrincipalHeader && hasPrincipalId)
         {
-            var encodedPrincipal = headerValue.ToString();
-            encodedPrincipal = encodedPrincipal.Replace('-', '+').Replace('_', '/');
-            encodedPrincipal = encodedPrincipal.PadRight(encodedPrincipal.Length + (4 - encodedPrincipal.Length % 4) % 4, '=');
-
-            var decodedBytes = Convert.FromBase64String(encodedPrincipal);
-            var decodedJson = Encoding.UTF8.GetString(decodedBytes);
-
-            using var principalDocument = JsonDocument.Parse(decodedJson);
-            var claims = new List<Claim>();
-
-            if (principalDocument.RootElement.TryGetProperty("claims", out var claimsElement))
+            try
             {
-                foreach (var claimElement in claimsElement.EnumerateArray())
-                {
-                    var claimType = claimElement.GetProperty("typ").GetString();
-                    var claimValue = claimElement.GetProperty("val").GetString();
+                var encodedPrincipal = headerValue.ToString();
+                encodedPrincipal = encodedPrincipal.Replace('-', '+').Replace('_', '/');
+                encodedPrincipal = encodedPrincipal.PadRight(encodedPrincipal.Length + (4 - encodedPrincipal.Length % 4) % 4, '=');
 
-                    if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
+                var decodedBytes = Convert.FromBase64String(encodedPrincipal);
+                var decodedJson = Encoding.UTF8.GetString(decodedBytes);
+
+                using var principalDocument = JsonDocument.Parse(decodedJson);
+                var claims = new List<Claim>();
+
+                if (principalDocument.RootElement.TryGetProperty("claims", out var claimsElement))
+                {
+                    foreach (var claimElement in claimsElement.EnumerateArray())
                     {
-                        claims.Add(new Claim(claimType, claimValue));
+                        var claimType = claimElement.GetProperty("typ").GetString();
+                        var claimValue = claimElement.GetProperty("val").GetString();
+
+                        if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
+                        {
+                            claims.Add(new Claim(claimType, claimValue));
+                        }
                     }
                 }
-            }
 
-            if (claims.Count > 0)
-            {
-                context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AppServiceEasyAuth"));
+                if (claims.Count > 0)
+                {
+                    context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AppServiceEasyAuth"));
+                }
+                else
+                {
+                    context.User = new ClaimsPrincipal(new ClaimsIdentity());
+                }
             }
-            else
+            catch
             {
                 context.User = new ClaimsPrincipal(new ClaimsIdentity());
             }
         }
-        catch
+        else
         {
             context.User = new ClaimsPrincipal(new ClaimsIdentity());
         }
-    }
-    else
-    {
-        context.User = new ClaimsPrincipal(new ClaimsIdentity());
-    }
 
-    await next();
-});
+        await next();
+    });
+}
 
 app.UseAuthorization();
 
-app.MapGet("/account/login", (HttpContext httpContext, string? returnUrl) =>
+app.MapGet("/account/login", async (HttpContext httpContext, string? returnUrl) =>
 {
     var safePath = !string.IsNullOrWhiteSpace(returnUrl) && returnUrl.StartsWith('/')
         ? returnUrl
         : "/";
+
+    if (useLocalOidc)
+    {
+        return Results.Challenge(
+            new AuthenticationProperties { RedirectUri = safePath },
+            new[] { "oidc" });
+    }
 
     var absoluteReturnUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{safePath}";
     var encodedReturnUrl = Uri.EscapeDataString(absoluteReturnUrl);
@@ -128,8 +194,15 @@ app.MapGet("/account/login", (HttpContext httpContext, string? returnUrl) =>
     return Results.Redirect($"/.auth/login/okta?post_login_redirect_uri={encodedReturnUrl}");
 });
 
-app.MapGet("/account/logout", (HttpContext httpContext) =>
+app.MapGet("/account/logout", async (HttpContext httpContext) =>
 {
+    if (useLocalOidc)
+    {
+        // For development, do a simple local sign-out to avoid OIDC callback issues
+        await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return Results.Redirect("/signed-out");
+    }
+
     return Results.Redirect("/signing-out");
 });
 

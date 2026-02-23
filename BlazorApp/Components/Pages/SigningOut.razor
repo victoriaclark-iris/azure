@@ -14,6 +14,7 @@
             return;
         }
 
+        // For production Easy Auth only - local OIDC now redirects directly from /account/logout
         await JSRuntime.InvokeVoidAsync("easyAuth.signOutAndRedirect", "/signed-out");
     }
 }
