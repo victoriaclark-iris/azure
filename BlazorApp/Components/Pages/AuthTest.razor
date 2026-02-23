@@ -1,0 +1,74 @@
+@page "/auth-test"
+@using System.Security.Claims
+
+<PageTitle>Auth Test</PageTitle>
+
+<h1>Authentication Test</h1>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Authentication Status</h3>
+    </div>
+    <div class="card-body">
+        <AuthorizeView>
+            <Authorized Context="authState">
+                <div class="alert alert-success">
+                    <h4>✅ Authenticated</h4>
+                    <p><strong>Name:</strong> @authState.User.Identity?.Name</p>
+                    <p><strong>Auth Type:</strong> @authState.User.Identity?.AuthenticationType</p>
+                    
+                    <h5>Claims:</h5>
+                    <ul>
+                        @foreach (var claim in authState.User.Claims.Take(10))
+                        {
+                            <li><strong>@claim.Type:</strong> @claim.Value</li>
+                        }
+                    </ul>
+                    
+                    <div class="mt-3">
+                        <a href="/account/logout" class="btn btn-warning">Test Logout</a>
+                        <a href="/logout" class="btn btn-outline-warning ms-2">Direct Logout</a>
+                        <a href="/todos" class="btn btn-primary ms-2">Go to Todo List</a>
+                    </div>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="alert alert-warning">
+                    <h4>❌ Not Authenticated</h4>
+                    <p>You are not signed in.</p>
+                    
+                    <div class="mt-3">
+                        <a href="/account/login" class="btn btn-primary">Sign In</a>
+                        <a href="/.auth/login/okta" class="btn btn-outline-primary ms-2">Direct Okta Login</a>
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h3>Environment Info</h3>
+    </div>
+    <div class="card-body">
+        <p><strong>User Agent:</strong> @GetUserAgent()</p>
+        <p><strong>Current URL:</strong> @GetCurrentUrl()</p>
+        <a href="/debug/auth" class="btn btn-info" target="_blank">View Debug Info</a>
+    </div>
+</div>
+
+@code {
+    [Inject] private IHttpContextAccessor? HttpContextAccessor { get; set; }
+    [Inject] private NavigationManager? Navigation { get; set; }
+    
+    private string GetUserAgent()
+    {
+        return HttpContextAccessor?.HttpContext?.Request.Headers["User-Agent"].ToString() ?? "Unknown";
+    }
+    
+    private string GetCurrentUrl()
+    {
+        return Navigation?.Uri ?? "Unknown";
+    }
+}

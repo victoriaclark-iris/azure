@@ -78,15 +78,14 @@ if (useLocalOidc)
 }
 else
 {
-    // Production mode - minimal auth setup for Easy Auth
+    // Production mode - let Easy Auth handle everything
     builder.Services.AddAuthentication()
         .AddCookie(options =>
         {
-            // In production, redirect unauthenticated users to Easy Auth
-            options.LoginPath = "/.auth/login/okta";
-            options.LogoutPath = "/.auth/logout";
+            // Remove custom paths - let Easy Auth handle login/logout completely
             options.Cookie.Name = "AppAuth";
             options.ExpireTimeSpan = TimeSpan.FromHours(24);
+            // Don't set LoginPath or LogoutPath at all
         });
 }
 
@@ -217,11 +216,14 @@ app.MapGet("/account/logout", async (HttpContext httpContext) =>
         return Results.Redirect("/signed-out");
     }
 
-    // For production with Easy Auth, redirect DIRECTLY to Easy Auth logout
-    // This avoids the redirect loop through /signing-out page
-    var redirectUri = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out";
-    var encodedRedirectUri = Uri.EscapeDataString(redirectUri);
-    return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedRedirectUri}");
+    // For production, redirect straight to Easy Auth logout - no custom logic
+    return Results.Redirect("/.auth/logout");
+});
+
+// Simple direct logout for production troubleshooting
+app.MapGet("/logout", (HttpContext httpContext) =>
+{
+    return Results.Redirect("/.auth/logout");
 });
 
 // Add a backup logout endpoint for troubleshooting
