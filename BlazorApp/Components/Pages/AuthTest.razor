@@ -19,9 +19,16 @@
                     
                     <h5>Claims:</h5>
                     <ul>
-                        @foreach (var claim in authState.User.Claims.Take(10))
+                        @if (authState.User.Claims.Any())
                         {
-                            <li><strong>@claim.Type:</strong> @claim.Value</li>
+                            @foreach (var claim in authState.User.Claims.Take(10))
+                            {
+                                <li><strong>@claim.Type:</strong> @claim.Value</li>
+                            }
+                        }
+                        else
+                        {
+                            <li>No claims found</li>
                         }
                     </ul>
                     
@@ -52,23 +59,11 @@
         <h3>Environment Info</h3>
     </div>
     <div class="card-body">
-        <p><strong>User Agent:</strong> @GetUserAgent()</p>
-        <p><strong>Current URL:</strong> @GetCurrentUrl()</p>
+        <p><strong>Current URL:</strong> @Navigation.Uri</p>
         <a href="/debug/auth" class="btn btn-info" target="_blank">View Debug Info</a>
     </div>
 </div>
 
 @code {
-    [Inject] private IHttpContextAccessor? HttpContextAccessor { get; set; }
-    [Inject] private NavigationManager? Navigation { get; set; }
-    
-    private string GetUserAgent()
-    {
-        return HttpContextAccessor?.HttpContext?.Request.Headers["User-Agent"].ToString() ?? "Unknown";
-    }
-    
-    private string GetCurrentUrl()
-    {
-        return Navigation?.Uri ?? "Unknown";
-    }
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
 }
