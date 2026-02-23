@@ -198,12 +198,31 @@ app.MapGet("/account/logout", async (HttpContext httpContext) =>
 {
     if (useLocalOidc)
     {
-        // For development, do a simple local sign-out to avoid OIDC callback issues
+        // For development, do a simple local sign-out
         await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Results.Redirect("/signed-out");
     }
 
+    // For production with Easy Auth, redirect to signing-out page
+    // which will handle the /.auth/logout flow
     return Results.Redirect("/signing-out");
+});
+
+// Add a backup logout endpoint for troubleshooting
+app.MapGet("/account/logout-direct", async (HttpContext httpContext) =>
+{
+    // Clear any local authentication
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    
+    if (!app.Environment.IsDevelopment())
+    {
+        // In production, redirect to Easy Auth logout
+        var redirectUri = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out";
+        var encodedRedirectUri = Uri.EscapeDataString(redirectUri);
+        return Results.Redirect($"/.auth/logout?post_logout_redirect_uri={encodedRedirectUri}");
+    }
+    
+    return Results.Redirect("/signed-out");
 });
 
 app.MapRazorComponents<App>()
