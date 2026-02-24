@@ -133,6 +133,26 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
+// Custom logout endpoint that clears auth state
+app.MapGet("/custom-logout", async (HttpContext httpContext) =>
+{
+    // Clear all authentication cookies
+    foreach (var cookie in httpContext.Request.Cookies)
+    {
+        if (cookie.Key.Contains("auth", StringComparison.OrdinalIgnoreCase) ||
+            cookie.Key.Contains("AppServiceAuth", StringComparison.OrdinalIgnoreCase))
+        {
+            httpContext.Response.Cookies.Delete(cookie.Key);
+        }
+    }
+    
+    // Clear user context
+    httpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
+    
+    // Redirect to home page
+    return Results.Redirect("/?logged_out=true");
+});
+
 // Debug endpoint to check authentication status
 app.MapGet("/debug/auth", (HttpContext httpContext) =>
 {
