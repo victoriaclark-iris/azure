@@ -133,10 +133,10 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
-// Custom logout endpoint that properly signs out of Okta
+// Custom logout endpoint that clears local auth state
 app.MapGet("/custom-logout", async (HttpContext httpContext) =>
 {
-    // Clear local authentication cookies first
+    // Clear local authentication cookies
     foreach (var cookie in httpContext.Request.Cookies)
     {
         if (cookie.Key.Contains("auth", StringComparison.OrdinalIgnoreCase) ||
@@ -149,11 +149,8 @@ app.MapGet("/custom-logout", async (HttpContext httpContext) =>
     // Clear user context
     httpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
     
-    // Redirect to Okta logout endpoint with proper post-logout redirect
-    var oktaLogoutUrl = "https://integrator-4753770.okta.com/oauth2/default/v1/logout";
-    var postLogoutRedirect = Uri.EscapeDataString($"{httpContext.Request.Scheme}://{httpContext.Request.Host}/signed-out");
-    
-    return Results.Redirect($"{oktaLogoutUrl}?post_logout_redirect_uri={postLogoutRedirect}");
+    // Simple redirect back to home page
+    return Results.Redirect("/signed-out");
 });
 
 // Debug endpoint to check authentication status
