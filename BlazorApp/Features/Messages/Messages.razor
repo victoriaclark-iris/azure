@@ -1,0 +1,358 @@
+@page "/messages"
+@rendermode InteractiveServer
+
+<PageTitle>Messages</PageTitle>
+
+<style>
+    .persona-chat {
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        min-height: 90vh;
+        color: #ffffff;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .persona-chat h1 {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: bold;
+        text-align: center;
+        margin-bottom: 2rem;
+        text-shadow: 0 0 20px rgba(255, 0, 64, 0.3);
+    }
+
+    .conversation-sidebar {
+        background: rgba(0, 0, 0, 0.7);
+        border-radius: 15px;
+        border: 2px solid #ff0040;
+        box-shadow: 0 8px 32px rgba(255, 0, 64, 0.2);
+        backdrop-filter: blur(10px);
+    }
+
+    .conversation-sidebar .card-header {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b);
+        color: white;
+        border-radius: 13px 13px 0 0 !important;
+        border: none;
+    }
+
+    .chat-container {
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 15px;
+        border: 2px solid #ff0040;
+        box-shadow: 0 8px 32px rgba(255, 0, 64, 0.2);
+        backdrop-filter: blur(10px);
+    }
+
+    .chat-header {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b);
+        color: white;
+        border-radius: 13px 13px 0 0 !important;
+        border: none;
+    }
+
+    .message-area {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 0;
+        max-height: 500px;
+        overflow-y: auto;
+        padding: 1rem;
+    }
+
+    .message-bubble {
+        position: relative;
+        max-width: 85%;
+        margin-bottom: 1rem;
+        animation: slideIn 0.3s ease;
+    }
+
+    .message-bubble.sent {
+        margin-left: auto;
+    }
+
+    .message-bubble.sent .bubble-content {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b);
+        color: white;
+        border-radius: 18px 18px 5px 18px;
+        position: relative;
+    }
+
+    .message-bubble.sent .bubble-content::after {
+        content: '';
+        position: absolute;
+        bottom: -5px;
+        right: 10px;
+        width: 0;
+        height: 0;
+        border-left: 10px solid #ff0040;
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+    }
+
+    .message-bubble.received .bubble-content {
+        background: rgba(255, 255, 255, 0.1);
+        color: #ffffff;
+        border-radius: 18px 18px 18px 5px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        position: relative;
+    }
+
+    .message-bubble.received .bubble-content::after {
+        content: '';
+        position: absolute;
+        bottom: -5px;
+        left: 10px;
+        width: 0;
+        height: 0;
+        border-right: 10px solid rgba(255, 255, 255, 0.1);
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+    }
+
+    .bubble-content {
+        padding: 12px 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    .message-sender {
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: #ff6b6b;
+        margin-bottom: 4px;
+    }
+
+    .message-time {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+
+    .message-input-area {
+        background: rgba(255, 0, 64, 0.1);
+        border-radius: 0 0 13px 13px;
+        border: none;
+    }
+
+    .persona-input {
+        background: rgba(0, 0, 0, 0.5) !important;
+        border: 2px solid rgba(255, 0, 64, 0.5) !important;
+        color: #ffffff !important;
+        border-radius: 25px !important;
+    }
+
+    .persona-input:focus {
+        background: rgba(0, 0, 0, 0.7) !important;
+        border-color: #ff0040 !important;
+        box-shadow: 0 0 15px rgba(255, 0, 64, 0.3) !important;
+        color: #ffffff !important;
+    }
+
+    .persona-input::placeholder {
+        color: rgba(255, 255, 255, 0.5) !important;
+    }
+
+    .persona-btn {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b) !important;
+        border: none !important;
+        border-radius: 25px !important;
+        color: white !important;
+        font-weight: bold !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 16px rgba(255, 0, 64, 0.3) !important;
+    }
+
+    .persona-btn:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(255, 0, 64, 0.4) !important;
+    }
+
+    .persona-btn:disabled {
+        background: rgba(128, 128, 128, 0.5) !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    .empty-state {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.6);
+        padding: 3rem;
+    }
+
+    .empty-state h5 {
+        color: #ff6b6b;
+        margin-bottom: 1rem;
+    }
+
+    .unread-badge {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b) !important;
+        box-shadow: 0 2px 8px rgba(255, 0, 64, 0.4);
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Custom scrollbar */
+    .message-area::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .message-area::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+    }
+
+    .message-area::-webkit-scrollbar-thumb {
+        background: linear-gradient(45deg, #ff0040, #ff6b6b);
+        border-radius: 10px;
+    }
+
+    .message-area::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(45deg, #ff6b6b, #ff0040);
+    }
+</style>
+
+<div class="persona-chat p-4">
+    @if (!isNameSet)
+    {
+        <!-- Name entry screen -->
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card conversation-sidebar">
+                    <div class="card-header text-center">
+                        <h5 class="mb-0">🎭 ENTER YOUR NAME</h5>
+                    </div>
+                    <div class="card-body">
+                        <form @onsubmit="SetUserName" @onsubmit:preventDefault="true">
+                            <div class="mb-3">
+                                <input type="text" @bind="userName" @bind:event="oninput" @onkeypress="HandleNameKeyPress" 
+                                       class="form-control persona-input" placeholder="Enter your chat name..." maxlength="50" />
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn persona-btn" disabled="@string.IsNullOrWhiteSpace(userName)">
+                                    JOIN CHAT ROOM
+                                </button>
+                            </div>
+                        </form>
+                        <div class="empty-state mt-3">
+                            <p><small>Choose a name to join the public chat room</small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <h1>PHANTOM CHAT ROOM</h1>
+                <div class="text-center mb-3">
+                    <span class="badge unread-badge">@userName</span>
+                    <span class="badge ms-2" style="background: rgba(255, 255, 255, 0.2); color: white;">
+                        @activeUsers.Count users online
+                    </span>
+                    <button class="btn btn-sm ms-2" @onclick="ResetName" 
+                            style="background: rgba(128, 128, 128, 0.3); border: none; border-radius: 15px; color: white;">
+                        Change Name
+                    </button>
+                    <button class="btn btn-sm ms-1" @onclick="RefreshMessages" 
+                            style="background: rgba(255, 107, 107, 0.3); border: none; border-radius: 15px; color: white;">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Chat Container -->
+                <div class="card chat-container">
+                    <div class="card-header chat-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">💬 Public Chat Room</h5>
+                        <small>@messages.Count messages</small>
+                    </div>
+                    
+                    <div class="card-body message-area" id="messageContainer">
+                        @if (messages.Any())
+                        {
+                            @foreach (var message in messages)
+                            {
+                                var isMyMessage = message.SenderName == userName;
+                                
+                                <div class="message-bubble @(isMyMessage ? "sent" : "received")">
+                                    <div class="bubble-content">
+                                        @if (!isMyMessage)
+                                        {
+                                            <div class="message-sender">@message.SenderName</div>
+                                        }
+                                        <div class="mb-1">@message.Content</div>
+                                        <div class="message-time">
+                                            @message.SentDate.ToString("HH:mm")
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else if (!isLoadingMessages)
+                        {
+                            <div class="empty-state">
+                                <h5>No messages yet</h5>
+                                <p>Be the first to start the conversation!</p>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="card-footer message-input-area">
+                        <form @onsubmit="SendMessage" @onsubmit:preventDefault="true">
+                            <div class="input-group">
+                                <input type="text" @bind="newMessageContent" @bind:event="oninput" @onkeypress="HandleKeyPress" 
+                                       class="form-control persona-input" placeholder="Type your message..." disabled="@isLoadingMessages" />
+                                <button type="submit" class="btn persona-btn" disabled="@(isLoadingMessages || string.IsNullOrWhiteSpace(newMessageContent))">
+                                    @if (isLoadingMessages)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    SEND
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Active Users -->
+                @if (activeUsers.Any())
+                {
+                    <div class="mt-3">
+                        <div class="card" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 0, 64, 0.3);">
+                            <div class="card-body p-2">
+                                <small class="text-muted">Active users: @string.Join(", ", activeUsers)</small>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (errorMessage != null)
+    {
+        <div class="alert mt-3" style="background: rgba(255, 0, 64, 0.1); border: 2px solid #ff0040; color: #ffffff; border-radius: 15px;">
+            ⚠️ @errorMessage
+        </div>
+    }
+</div>
+
+
+<script>
+    window.scrollToBottom = (elementId) => {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.scrollTop = element.scrollHeight;
+        }
+    };
+</script>

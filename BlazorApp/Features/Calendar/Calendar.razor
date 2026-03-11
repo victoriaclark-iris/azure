@@ -1,0 +1,694 @@
+@page "/calendar"
+@rendermode InteractiveServer
+
+<PageTitle>Calendar - PHANTOM SCHEDULE</PageTitle>
+
+<div class="calendar-container">
+    <div class="calendar-header">
+        <div class="calendar-title">
+            <h1 class="phantom-title">PHANTOM SCHEDULE</h1>
+            <div class="date-selector">
+                <button class="nav-button" @onclick="PreviousMonth">&lt;</button>
+                <span class="current-month">@CurrentDate.ToString("MMMM yyyy")</span>
+                <button class="nav-button" @onclick="NextMonth">&gt;</button>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="error-banner">
+                <div class="error-content">
+                    <span class="error-icon">⚠️</span>
+                    <span class="error-text">@ErrorMessage</span>
+                    <button class="error-close" @onclick="ClearError">×</button>
+                </div>
+            </div>
+        }
+        
+        @if (IsLoading)
+        {
+            <div class="loading-banner">
+                <span class="loading-text">Loading...</span>
+            </div>
+        }
+    </div>
+
+    <div class="calendar-content">
+        <div class="calendar-main">
+            <div class="calendar-grid" @key="@($"{CurrentDate:yyyy-MM}_{MonthlyEvents.Count}")">
+                <div class="day-headers">
+                    @foreach (var day in new[] { "SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT" })
+                    {
+                        <div class="day-header">@day</div>
+                    }
+                </div>
+
+                <div class="calendar-days">
+                    @foreach (var day in GetCalendarDays())
+                    {
+                        <div class="calendar-day @(day.IsCurrentMonth ? "current-month" : "other-month") @(day.IsToday ? "today" : "") @(day.HasEvents ? "has-events" : "")"
+                             @onclick="() => SelectDate(day.Date)">
+                            <span class="day-number">@day.Date.Day</span>
+                            @if (day.HasEvents)
+                            {
+                                <div class="event-indicators">
+                                    @foreach (var eventType in day.EventTypes.Take(3))
+                                    {
+                                        <div class="event-dot @GetEventTypeClass(eventType)"></div>
+                                    }
+                                    @if (day.EventTypes.Count > 3)
+                                    {
+                                        <div class="event-dot more">+@(day.EventTypes.Count - 3)</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <aside class="calendar-sidebar">
+            <div class="event-panel">
+                @if (SelectedDate.HasValue)
+                {
+                    <div class="event-panel-header">
+                        <h3>@SelectedDate.Value.ToString("dddd, MMMM dd")</h3>
+                        <button class="add-event-btn" @onclick="ShowAddEventForm">+ ADD EVENT</button>
+                    </div>
+
+                    <div class="events-list">
+                        @if (SelectedDateEvents.Any())
+                        {
+                            @foreach (var calendarEvent in SelectedDateEvents)
+                            {
+                                <div class="event-item @GetEventTypeClass(calendarEvent.EventType)">
+                                    <div class="event-header">
+                                        <span class="event-title">@calendarEvent.Title</span>
+                                        <div class="event-actions">
+                                            <button class="action-btn edit" @onclick="() => EditEvent(calendarEvent)">✎</button>
+                                            <button class="action-btn delete" @onclick="() => DeleteEvent(calendarEvent.Id)">🗑</button>
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(calendarEvent.Description))
+                                    {
+                                        <div class="event-description">@calendarEvent.Description</div>
+                                    }
+                                    <div class="event-type">@calendarEvent.EventType.ToString().ToUpper()</div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="no-events">No events scheduled for this date.</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="event-panel-header">
+                        <h3>Select a date</h3>
+                    </div>
+                    <div class="events-list">
+                        <div class="no-events">Pick a day on the calendar to view or add events.</div>
+                    </div>
+                }
+            </div>
+        </aside>
+    </div>
+
+    @if (ShowEventForm)
+    {
+        <div class="event-form-overlay" @onclick="HideAddEventForm">
+            <div class="event-form" @onclick:stopPropagation="true">
+                <div class="form-header">
+                    <h3>@(IsEditMode ? "EDIT EVENT" : "ADD EVENT")</h3>
+                    <button class="close-btn" @onclick="HideAddEventForm">×</button>
+                </div>
+
+                <div class="form-content">
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" @bind="NewEvent.Title" placeholder="Enter event title" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea @bind="NewEvent.Description" placeholder="Enter event description (optional)"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Event Type</label>
+                        <select @bind="NewEvent.EventType">
+                            @foreach (var type in Enum.GetValues<EventType>())
+                            {
+                                <option value="@type">@type.ToString()</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" @bind="NewEvent.EventDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="action-btn save" @onclick="SaveEvent">@(IsEditMode ? "UPDATE" : "SAVE")</button>
+                    <button class="action-btn cancel" @onclick="HideAddEventForm">CANCEL</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+.calendar-container {
+    background: linear-gradient(135deg, #1a0d0d 0%, #2d0a0a 50%, #1a0d0d 100%);
+    min-height: calc(100vh - 60px);
+    padding: 20px;
+    color: #ffffff;
+    font-family: 'Arial', sans-serif;
+}
+
+.calendar-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.phantom-title {
+    font-size: 2.5rem;
+    color: #ff0040;
+    text-shadow: 0 0 20px #ff0040;
+    margin: 0 0 20px 0;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.date-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+
+.nav-button {
+    background: linear-gradient(135deg, #ff0040, #cc0033);
+    border: none;
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+}
+
+.nav-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 0, 64, 0.5);
+}
+
+.current-month {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.calendar-grid {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 0, 64, 0.2);
+}
+
+.calendar-content {
+    display: grid;
+    grid-template-columns: minmax(560px, 2fr) minmax(320px, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.calendar-main {
+    min-width: 0;
+}
+
+.calendar-sidebar {
+    min-width: 0;
+}
+
+.day-headers {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+.day-header {
+    text-align: center;
+    padding: 10px;
+    font-weight: bold;
+    color: #ff0040;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+
+.calendar-day {
+    aspect-ratio: 1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.05);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.calendar-day:hover {
+    background: rgba(255, 0, 64, 0.2);
+    border-color: #ff0040;
+    transform: translateY(-2px);
+}
+
+.calendar-day.current-month {
+    color: #ffffff;
+}
+
+.calendar-day.other-month {
+    color: #666;
+    opacity: 0.5;
+}
+
+.calendar-day.today {
+    background: linear-gradient(135deg, #ff0040, #cc0033);
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(255, 0, 64, 0.4);
+}
+
+.calendar-day.has-events {
+    border-color: #ff0040;
+}
+
+.day-number {
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+.event-indicators {
+    display: flex;
+    gap: 2px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.event-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff0040;
+}
+
+.event-dot.general { background: #ff0040; }
+.event-dot.important { background: #ffff00; }
+.event-dot.social { background: #00ff40; }
+.event-dot.study { background: #4080ff; }
+.event-dot.work { background: #ff8000; }
+.event-dot.personal { background: #ff40ff; }
+
+.event-dot.more {
+    background: none;
+    color: #ff0040;
+    font-size: 0.6rem;
+    font-weight: bold;
+    width: auto;
+    height: auto;
+}
+
+.event-panel {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 0, 64, 0.2);
+}
+
+.event-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid rgba(255, 0, 64, 0.3);
+    padding-bottom: 15px;
+}
+
+.event-panel-header h3 {
+    color: #ff0040;
+    font-size: 1.3rem;
+    margin: 0;
+    text-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
+}
+
+.add-event-btn {
+    background: linear-gradient(135deg, #ff0040, #cc0033);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+}
+
+.add-event-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 0, 64, 0.5);
+}
+
+.events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.event-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 15px;
+    border-left: 4px solid #ff0040;
+    transition: all 0.3s ease;
+}
+
+.event-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateX(5px);
+}
+
+.event-item.general { border-left-color: #ff0040; }
+.event-item.important { border-left-color: #ffff00; }
+.event-item.social { border-left-color: #00ff40; }
+.event-item.study { border-left-color: #4080ff; }
+.event-item.work { border-left-color: #ff8000; }
+.event-item.personal { border-left-color: #ff40ff; }
+
+.event-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.event-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.event-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #ffffff;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn:hover {
+    background: rgba(255, 0, 64, 0.3);
+    transform: scale(1.1);
+}
+
+.action-btn.edit:hover { background: rgba(0, 128, 255, 0.3); }
+.action-btn.delete:hover { background: rgba(255, 0, 0, 0.3); }
+
+.event-description {
+    color: #cccccc;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+
+.event-type {
+    color: #ff0040;
+    font-size: 0.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.no-events {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 20px;
+}
+
+.event-form-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(5px);
+}
+
+.event-form {
+    background: linear-gradient(135deg, #1a0d0d 0%, #2d0a0a 50%, #1a0d0d 100%);
+    border-radius: 15px;
+    padding: 30px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 0, 64, 0.3);
+}
+
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    border-bottom: 2px solid rgba(255, 0, 64, 0.3);
+    padding-bottom: 15px;
+}
+
+.form-header h3 {
+    color: #ff0040;
+    font-size: 1.5rem;
+    margin: 0;
+    text-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+    background: rgba(255, 0, 64, 0.3);
+    transform: scale(1.1);
+}
+
+.form-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    color: #ff0040;
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    color: #ffffff;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #ff0040;
+    box-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.form-group textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.form-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: flex-end;
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.action-btn.save {
+    background: linear-gradient(135deg, #ff0040, #cc0033);
+    border: none;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 0, 64, 0.3);
+}
+
+.action-btn.cancel {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.action-btn.save:hover,
+.action-btn.cancel:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 0, 64, 0.5);
+}
+
+.error-banner {
+    background: rgba(255, 0, 0, 0.2);
+    border: 1px solid #ff0040;
+    border-radius: 8px;
+    margin: 15px 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.error-content {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    gap: 10px;
+}
+
+.error-icon {
+    font-size: 1.2rem;
+}
+
+.error-text {
+    color: #ffffff;
+    flex: 1;
+    font-weight: 500;
+}
+
+.error-close {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s ease;
+}
+
+.error-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.loading-banner {
+    background: rgba(255, 0, 64, 0.2);
+    border: 1px solid #ff0040;
+    border-radius: 8px;
+    margin: 15px 0;
+    padding: 15px;
+    text-align: center;
+}
+
+.loading-text {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+@@media (max-width: 1280px) {
+    .calendar-content {
+        grid-template-columns: 1fr;
+    }
+
+    .event-panel {
+        margin-top: 0;
+    }
+}
+
+@@media (max-width: 640px) {
+    .calendar-container {
+        padding: 12px;
+    }
+
+    .calendar-grid,
+    .event-panel {
+        padding: 14px;
+    }
+
+    .day-number {
+        font-size: 0.95rem;
+    }
+}
+
+</style>

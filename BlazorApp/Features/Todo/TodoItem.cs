@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace BlazorApp.Models
+namespace BlazorApp.Features.Todo
 {
     public class TodoItem
     {

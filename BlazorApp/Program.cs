@@ -1,13 +1,13 @@
 using BlazorApp.Components;
-using BlazorApp.Services;
+using BlazorApp.Features.Auth;
+using BlazorApp.Features.Calendar;
+using BlazorApp.Features.Messages;
+using BlazorApp.Features.Todo;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Azure.Cosmos;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using System.Security.Claims;
-using System.Text;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,11 +40,20 @@ if (!string.IsNullOrEmpty(cosmosConnectionString))
         return new CosmosClient(cosmosConnectionString);
     });
 
-    builder.Services.AddSingleton<CosmosDbService>(serviceProvider =>
+    builder.Services.AddSingleton<TodoService>(serviceProvider =>
     {
         var cosmosClient = serviceProvider.GetRequiredService<CosmosClient>();
-        return new CosmosDbService(cosmosClient, cosmosDatabaseName, cosmosContainerName);
+        return new TodoService(cosmosClient, cosmosDatabaseName, cosmosContainerName);
     });
+
+    builder.Services.AddSingleton<CalendarService>(serviceProvider =>
+    {
+        var cosmosClient = serviceProvider.GetRequiredService<CosmosClient>();
+        return new CalendarService(cosmosClient, cosmosDatabaseName, cosmosContainerName);
+    });
+
+    // In-memory message service - no Cosmos DB required
+    builder.Services.AddSingleton<MessageService>();
 }
 
 var app = builder.Build();
@@ -63,113 +72,11 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 app.UseAuthentication();
 
-// Easy Auth middleware for all environments
-app.Use(async (context, next) =>
-{
-    var hasPrincipalHeader = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL", out var headerValue);
-    var hasPrincipalName = context.Request.Headers.TryGetValue("X-MS-CLIENT-PRINCIPAL-NAME", out var principalName) &&
-                          !string.IsNullOrWhiteSpace(principalName.ToString());
-
-    Console.WriteLine($"Easy Auth Debug: hasPrincipalHeader={hasPrincipalHeader}, hasPrincipalName={hasPrincipalName}");
-    Console.WriteLine($"Principal Name Header: {principalName}");
-
-    if (hasPrincipalHeader && hasPrincipalName)
-    {
-        try
-        {
-            Console.WriteLine("Processing Easy Auth headers...");
-            var encodedPrincipal = headerValue.ToString();
-            encodedPrincipal = encodedPrincipal.Replace('-', '+').Replace('_', '/');
-            encodedPrincipal = encodedPrincipal.PadRight(encodedPrincipal.Length + (4 - encodedPrincipal.Length % 4) % 4, '=');
-
-            var decodedBytes = Convert.FromBase64String(encodedPrincipal);
-            var decodedJson = Encoding.UTF8.GetString(decodedBytes);
-            Console.WriteLine($"Decoded JSON: {decodedJson}");
-
-            using var principalDocument = JsonDocument.Parse(decodedJson);
-            var claims = new List<Claim>();
-
-            // Add a basic name claim from the header
-            claims.Add(new Claim("name", principalName.ToString()));
-            claims.Add(new Claim("sub", principalName.ToString()));
-
-            if (principalDocument.RootElement.TryGetProperty("claims", out var claimsElement))
-            {
-                foreach (var claimElement in claimsElement.EnumerateArray())
-                {
-                    if (claimElement.TryGetProperty("typ", out var typeProperty) && 
-                        claimElement.TryGetProperty("val", out var valueProperty))
-                    {
-                        var claimType = typeProperty.GetString();
-                        var claimValue = valueProperty.GetString();
-
-                        if (!string.IsNullOrWhiteSpace(claimType) && claimValue is not null)
-                        {
-                            claims.Add(new Claim(claimType, claimValue));
-                        }
-                    }
-                }
-            }
-
-            Console.WriteLine($"Created {claims.Count} claims");
-            var identity = new ClaimsIdentity(claims, "EasyAuth");
-            context.User = new ClaimsPrincipal(identity);
-            Console.WriteLine($"Set user identity: {context.User.Identity.IsAuthenticated}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error processing Easy Auth: {ex.Message}");
-            context.User = new ClaimsPrincipal(new ClaimsIdentity());
-        }
-    }
-    else
-    {
-        Console.WriteLine("No Easy Auth headers found, setting anonymous user");
-        context.User = new ClaimsPrincipal(new ClaimsIdentity());
-    }
-
-    await next();
-});
+app.UseEasyAuthPrincipal();
 
 app.UseAuthorization();
 
-// Custom logout endpoint that clears local auth state
-app.MapGet("/custom-logout", async (HttpContext httpContext) =>
-{
-    // Clear local authentication cookies
-    foreach (var cookie in httpContext.Request.Cookies)
-    {
-        if (cookie.Key.Contains("auth", StringComparison.OrdinalIgnoreCase) ||
-            cookie.Key.Contains("AppServiceAuth", StringComparison.OrdinalIgnoreCase))
-        {
-            httpContext.Response.Cookies.Delete(cookie.Key);
-        }
-    }
-    
-    // Clear user context
-    httpContext.User = new ClaimsPrincipal(new ClaimsIdentity());
-    
-    // Simple redirect back to home page
-    return Results.Redirect("/signed-out");
-});
-
-// Debug endpoint to check authentication status
-app.MapGet("/debug/auth", (HttpContext httpContext) =>
-{
-    var authInfo = new
-    {
-        IsAuthenticated = httpContext.User.Identity?.IsAuthenticated,
-        Name = httpContext.User.Identity?.Name,
-        AuthenticationType = httpContext.User.Identity?.AuthenticationType,
-        Claims = httpContext.User.Claims.Select(c => new { c.Type, c.Value }).ToArray(),
-        Headers = httpContext.Request.Headers
-            .Where(h => h.Key.StartsWith("X-MS-CLIENT"))
-            .ToDictionary(h => h.Key, h => h.Value.ToString()),
-        Environment = app.Environment.EnvironmentName
-    };
-    
-    return Results.Json(authInfo);
-});
+app.MapAuthFeatureEndpoints(app.Environment.EnvironmentName);
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

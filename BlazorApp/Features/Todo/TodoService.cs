@@ -1,14 +1,13 @@
 using Microsoft.Azure.Cosmos;
-using BlazorApp.Models;
 using System.Net;
 
-namespace BlazorApp.Services
+namespace BlazorApp.Features.Todo
 {
-    public class CosmosDbService
+    public class TodoService
     {
         private readonly Container _container;
 
-        public CosmosDbService(CosmosClient cosmosClient, string databaseName, string containerName)
+        public TodoService(CosmosClient cosmosClient, string databaseName, string containerName)
         {
             _container = cosmosClient.GetContainer(databaseName, containerName);
         }

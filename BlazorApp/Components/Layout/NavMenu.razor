@@ -1,6 +1,9 @@
 ﻿<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">BlazorApp</a>
+        <a class="navbar-brand" href="">
+            <span class="brand-mark">P5</span>
+            <span class="brand-text">Phantom HQ</span>
+        </a>
     </div>
 </div>
 
@@ -8,6 +11,8 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="flex-column">
+        <div class="nav-section px-3">Mission Board</div>
+
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
@@ -29,6 +34,18 @@
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="todos">
                 <span class="bi bi-check2-square" aria-hidden="true"></span> Todo List
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="calendar">
+                <span class="bi bi-calendar3" aria-hidden="true"></span> Calendar
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="messages">
+                <span class="bi bi-chat-dots-fill" aria-hidden="true"></span> Messages
             </NavLink>
         </div>
 
