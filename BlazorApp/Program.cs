@@ -23,6 +23,7 @@ builder.Services.AddAuthentication()
     {
         options.Cookie.Name = "AppAuth";
         options.ExpireTimeSpan = TimeSpan.FromHours(24);
+        options.LoginPath = "/.auth/login/okta";
     });
 
 builder.Services.AddAuthorization();
